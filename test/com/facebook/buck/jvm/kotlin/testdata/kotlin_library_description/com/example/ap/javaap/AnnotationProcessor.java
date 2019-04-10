@@ -14,7 +14,10 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import com.google.auto.service.AutoService;
+import javax.annotation.processing.Processor;
 
+@AutoService(Processor.class)
 @SupportedAnnotationTypes("com.example.ap.javaannotation.JavaAnnotation")
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 @SupportedOptions({})
