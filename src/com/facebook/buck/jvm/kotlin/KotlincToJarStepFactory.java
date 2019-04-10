@@ -42,12 +42,15 @@ import com.facebook.buck.jvm.java.JavacToJarStepFactory;
 import com.facebook.buck.jvm.kotlin.KotlinLibraryDescription.AnnotationProcessingTool;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.fs.CopyStep;
+import com.facebook.buck.step.fs.WriteFileStep;
+import com.facebook.buck.step.fs.TouchStep;
 import com.facebook.buck.step.fs.CopyStep.DirectoryMode;
 import com.facebook.buck.step.fs.MakeCleanDirectoryStep;
 import com.facebook.buck.util.zip.ZipCompressionLevel;
 import com.facebook.buck.zip.ZipStep;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -56,6 +59,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.Files;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
@@ -146,6 +151,10 @@ public class KotlincToJarStepFactory extends CompileToJarStepFactory implements 
         BuildTargetPaths.getAnnotationPath(projectFilesystem, invokingRule, "__%s_sources__");
     Path classesOutput =
         BuildTargetPaths.getAnnotationPath(projectFilesystem, invokingRule, "__%s_classes__");
+    Path servicesOutput =
+        BuildTargetPaths.getAnnotationPath(projectFilesystem, invokingRule, "__%s_classes__/META-INF/services");
+    Path servicesOutputFile =
+        BuildTargetPaths.getAnnotationPath(projectFilesystem, invokingRule, "__%s_classes__/META-INF/services/javax.annotation.processing.Processor");
     Path kaptGeneratedOutput =
         BuildTargetPaths.getAnnotationPath(
             projectFilesystem, invokingRule, "__%s_kapt_generated__");
@@ -178,6 +187,7 @@ public class KotlincToJarStepFactory extends CompileToJarStepFactory implements 
       addCreateFolderStep(steps, projectFilesystem, buildContext, sourcesOutput);
       addCreateFolderStep(steps, projectFilesystem, buildContext, tmpFolder);
       addCreateFolderStep(steps, projectFilesystem, buildContext, genOutputFolder);
+      addCreateFolderStep(steps, projectFilesystem, buildContext, servicesOutput);
 
       ImmutableSortedSet<Path> allClasspaths =
           ImmutableSortedSet.<Path>naturalOrder()
@@ -253,6 +263,39 @@ public class KotlincToJarStepFactory extends CompileToJarStepFactory implements 
               projectFilesystem,
               Optional.of(parameters.getOutputPaths().getWorkingDirectory())));
 
+      List<ImmutableSet<String>> annotationProcessorsNames =
+              javacOptions
+                  .getJavaAnnotationProcessorParams()
+                  .getPluginProperties()
+                  .stream()
+                  .map(
+                      resolvedJavacPluginProperties ->
+                          resolvedJavacPluginProperties.getJavacPluginJsr199Fields(
+                              buildContext.getSourcePathResolver(), projectFilesystem))
+                  .map(JavacPluginJsr199Fields::getProcessorNames)
+                  .collect(Collectors.toList());
+      if (!annotationProcessorsNames.isEmpty()) {
+        for (String annotationProcessorName : annotationProcessorsNames.get(0)) {
+          if (annotationProcessorName != null && !annotationProcessorName.isEmpty()) {
+            // throw new RuntimeException(
+            //   "Annotation Processor Name: " + annotationProcessorName + "\n" +
+            //   "Services Output File " + servicesOutputFile + "\n" +
+            //   "Classes Output " + classesOutput + "\n"
+            // );
+            System.out.println("Annotation Processor Name: " + annotationProcessorName);
+            System.out.println("Services Output File " + servicesOutputFile);
+            System.out.println("Classes Output " + classesOutput);
+          steps.add(new TouchStep(projectFilesystem, servicesOutputFile))
+            .add(
+                new WriteFileStep(
+                    projectFilesystem,
+                    annotationProcessorName,
+                    servicesOutputFile,
+                    false /* executable */))
+            .build();
+          }
+        }
+      }
       // Generated classes should be part of the output. This way generated files
       // such as META-INF dirs will also be added to the final jar.
       steps.add(
@@ -344,7 +387,7 @@ public class KotlincToJarStepFactory extends CompileToJarStepFactory implements 
                 .map(url -> AP_CLASSPATH_ARG + url.getFile())
                 .collect(Collectors.toList()));
 
-    ImmutableList<String> kaptPluginOptions =
+        ImmutableList<String> kaptPluginOptions =
         ImmutableList.<String>builder()
             .add(AP_CLASSPATH_ARG + kotlinc.getAnnotationProcessorPath(resolver))
             .add(AP_CLASSPATH_ARG + kotlinc.getStdlibPath(resolver))

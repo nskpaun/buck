@@ -9,6 +9,9 @@ kotlin_library(
         "//com/example/ap/javaap:ap",
         "//com/example/ap/kotlinap:ap",
     ],
+    annotation_processors = [
+        "com.example.ap.javaap.AnnotationProcessor",
+    ],
     visibility = [
         "PUBLIC",
     ],
